@@ -3855,7 +3855,7 @@ options_postprocess_mutate(struct options *o, struct env_set *es)
 #define CHKACC_FILEXSTWR (1<<2)  /** If file exists, is it writable? */
 #define CHKACC_ACPTSTDIN (1<<3)  /** If filename is stdin, it's allowed and "exists" */
 #define CHKACC_PRIVATE (1<<4)    /** Warn if this (private) file is group/others accessible */
-
+#define CHKACC_ACCEPT_URI (1<<5) /** If filename is a URI, no check is done unless it starts with file: */
 static bool
 check_file_access(const int type, const char *file, const int mode, const char *opt)
 {
@@ -3873,6 +3873,20 @@ check_file_access(const int type, const char *file, const int mode, const char *
     if ( (type & CHKACC_ACPTSTDIN) && streq(file, "stdin") )
     {
         return false;
+    }
+    /* file name is a URI if its first segment  has ":" (i.e., before any "/")
+     * Then no checks done if CHKACC_ACCEPT_URI is set and the URI does not start with "file:"
+     */
+    if ((type & CHKACC_ACCEPT_URI) && strchr(file, ':'))
+    {
+        if (!strncmp(file, "file:", 5))
+        {
+            file += 5;
+        }
+        else if (!strchr(file, '/') || strchr(file, '/') > strchr(file, ':'))
+        {
+            return false;
+        }
     }
 
     /* Is the directory path leading to the given file accessible? */
@@ -4073,7 +4087,7 @@ options_postprocess_filechecks(struct options *options)
     errs |= check_file_access_chroot(options->chroot_dir, CHKACC_FILE,
                                      options->ca_path, R_OK, "--capath");
 
-    errs |= check_file_access_inline(options->cert_file_inline, CHKACC_FILE,
+    errs |= check_file_access_inline(options->cert_file_inline, CHKACC_FILE|CHKACC_ACCEPT_URI,
                                      options->cert_file, R_OK, "--cert");
 
     errs |= check_file_access_inline(options->extra_certs_file, CHKACC_FILE,
@@ -4083,7 +4097,7 @@ options_postprocess_filechecks(struct options *options)
     if (!(options->management_flags & MF_EXTERNAL_KEY))
     {
         errs |= check_file_access_inline(options->priv_key_file_inline,
-                                         CHKACC_FILE|CHKACC_PRIVATE,
+                                         CHKACC_FILE|CHKACC_PRIVATE|CHKACC_ACCEPT_URI,
                                          options->priv_key_file, R_OK, "--key");
     }
 
